@@ -6,6 +6,10 @@ from fastapi import Depends
 from schemas.product import ProductCreate, ProductUpdate, ProductResponse
 import uuid 
 from typing import Optional
+import logging
+from workers.tasks import deliver_webhook
+from enums import WebhookEvent
+import datetime
 router = APIRouter(prefix="/products")
 
 
@@ -20,8 +24,19 @@ def create_product(product: ProductCreate, db: Session = Depends(get_db)):
         db.add(db_product)
         db.commit()
         db.refresh(db_product)
+        logging.info(f"Product created: {db_product.name}")
+        payload = {
+            "sku": db_product.sku,
+            "name": db_product.name,
+            "description": db_product.description,
+            "price": db_product.price,
+            "active": db_product.active,
+            "created_at": str(datetime.datetime.now())
+        }
+        deliver_webhook.delay(WebhookEvent.PRODUCT_CREATED.value, payload)
         return db_product
     except Exception as e:
+        logging.error(f"Error creating product: {e}")
         return {"message": str(e)}
 
 @router.get("/list", response_model=list[ProductResponse])
@@ -51,6 +66,7 @@ def get_product(product_id: str, db: Session = Depends(get_db)):
         db_product = db.query(Product).get(uuid.UUID(product_id))
         return db_product
     except ValueError:
+        logging.error(f"Product not found: {product_id}")
         return {"message": "Product not found"}
 
 from pydantic import BaseModel
@@ -67,6 +83,7 @@ def set_product_active(product_id: str, status_update: StatusUpdate, db: Session
         db.refresh(db_product)
         return db_product
     except ValueError:
+        logging.error(f"Product not found: {product_id}")
         return {"message": "Product not found"}
 
 @router.put("/update/{product_id}", response_model=ProductResponse)
@@ -77,8 +94,18 @@ def update_product(product_id: str, product: ProductUpdate, db: Session = Depend
             setattr(db_product, field, value)
         db.commit()
         db.refresh(db_product)
+        payload = {
+            "sku": db_product.sku,
+            "name": db_product.name,
+            "description": db_product.description,
+            "price": db_product.price,
+            "active": db_product.active,
+            "updated_at": str(datetime.datetime.now())
+        }
+        deliver_webhook.delay(WebhookEvent.PRODUCT_UPDATED.value, payload)
         return db_product
     except ValueError:
+        logging.error(f"Product not found: {product_id}")
         return {"message": "Product not found"}
 
 
@@ -89,8 +116,15 @@ def delete_all_products(msg:str ,db: Session = Depends(get_db)):
             return {"message": "Invalid message"}
         db.query(Product).delete()
         db.commit()
+        payload = {
+            "message": "All products deleted",
+            "deleted_at": str(datetime.datetime.now())
+        }
+        deliver_webhook.delay(WebhookEvent.PRODUCT_DELETED_ALL.value, payload)
+        logging.info("All products deleted")
         return {"message": "All products deleted"}
     except Exception as e:
+        logging.error(f"Error deleting all products: {e}")
         return {"message": str(e)}
 
 
@@ -100,8 +134,19 @@ def delete_product(product_id: str, db: Session = Depends(get_db)):
         db_product = db.query(Product).get(uuid.UUID(product_id))
         db.delete(db_product)
         db.commit()
+        payload = {
+            "sku": db_product.sku,
+            "name": db_product.name,
+            "description": db_product.description,
+            "price": db_product.price,
+            "active": db_product.active,
+            "deleted_at": str(datetime.datetime.now())
+        }
+        deliver_webhook.delay(WebhookEvent.PRODUCT_DELETED.value, payload)
+        logging.info("Product deleted")
         return {"message": "Product deleted"}
     except ValueError:
+        logging.error(f"Product not found: {product_id}")
         return {"message": "Product not found"}
 
 

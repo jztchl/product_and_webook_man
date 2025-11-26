@@ -5,7 +5,9 @@ from database import get_db
 from fastapi import Depends
 from schemas.webhook import WebhookCreate, WebhookUpdate, WebhookResponse
 from sqlalchemy.orm import Session
-
+from fastapi import HTTPException
+import time
+import httpx
 router = APIRouter(prefix="/webhooks")
 @router.post("/create", response_model=WebhookResponse)
 def create_webhook(webhook: WebhookCreate, db: Session = Depends(get_db)):
@@ -52,3 +54,44 @@ def delete_webhook(webhook_id: str, db: Session = Depends(get_db)):
     return {"message": "Webhook deleted"}
 
 
+@router.post("/test/{webhook_id}")
+async def test_webhook(webhook_id: str, db: Session = Depends(get_db)):
+    webhook = db.query(Webhook).filter(Webhook.id == webhook_id).first()
+
+    if not webhook:
+        raise HTTPException(404, "Webhook not found")
+
+    sample_payload = {
+        "event": webhook.event_type,
+        "test": True,
+        "timestamp": int(time.time())
+    }
+
+    start = time.time()
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.post(webhook.url, json=sample_payload)
+
+        duration = round((time.time() - start) * 1000)
+
+        return {
+            "status": res.status_code,
+            "response_time_ms": duration,
+            "body": res.text
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "response_time_ms": None,
+            "body": str(e)
+        }
+       
+
+
+
+@router.post("/test_webhook_event") #this is for checking the flow , by givinng this endpoint url as webhook url and this will be called by celery worker
+async def test_webhook_event(body: dict):
+    print(body)
+    return {"message": "success", "body": body}

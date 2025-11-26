@@ -5,10 +5,9 @@ from redis import Redis
 from config import settings
 import csv
 from .celery_app import celery_app
-from time import sleep
 import os
 import logging
-from enums import ImportStatus
+from enums import ImportStatus, WebhookEvent
 
 redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
 
@@ -79,6 +78,7 @@ def import_csv_task(file_path: str, task_id: str):
         redis.expire(f"progress:{task_id}", 1200)
         if os.path.exists(file_path):
             os.remove(file_path)
+            logging.info(f"file removed {file_path}")
 
     return "completed"
 
@@ -96,3 +96,26 @@ def flush_batch(db, batch):
     )
 
     db.execute(stmt)
+
+
+
+
+@celery_app.task
+def deliver_webhook(event_type: str, payload: dict):
+    from models.webhook import Webhook
+    from database import SessionLocal
+    import httpx, time, logging
+
+    with SessionLocal() as db:
+        webhooks = db.query(Webhook).filter_by(event_type=event_type, active=True).all()
+
+    for hook in webhooks:
+        try:
+            start = time.time()
+            res = httpx.post(hook.url, json=payload, timeout=5)
+            logging.info(
+                f"[Webhook] Delivered to {hook.url} ({event_type}) - "
+                f"{res.status_code} in {int((time.time() - start)*1000)}ms"
+            )
+        except Exception as e:
+            logging.error(f"[Webhook ERROR] {hook.url}: {e}")
