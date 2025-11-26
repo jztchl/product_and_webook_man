@@ -1,0 +1,25 @@
+services:
+  api:
+    build: .
+    container_name: assignment_api
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    restart: always
+    volumes:
+      - ./tmp:/app/tmp
+      - .:/app:cached
+
+  celery:
+    build: .
+    container_name: assignment_celery
+    command: celery -A workers.celery_app worker --pool=threads -l info
+    env_file:
+      - .env
+    restart: always
+    volumes:
+      - ./tmp:/app/tmp
+      - .:/app:cached
+    depends_on:
+      - api
