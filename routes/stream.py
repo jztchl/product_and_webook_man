@@ -4,7 +4,7 @@ from config import settings
 from fastapi.responses import StreamingResponse
 import asyncio
 import json
-
+from enums import ImportStatus
 router = APIRouter(prefix="/stream", tags=["progress"])
 
 redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
@@ -21,7 +21,7 @@ async def progress_stream(task_id: str):
 
         yield f"data: {json.dumps(data)}\n\n"
 
-        if data.get("status") == "Completed" or data.get("status") == "Failed":
+        if data.get("status") == ImportStatus.COMPLETED.value or data.get("status") == ImportStatus.FAILED.value:
             break
 
         await asyncio.sleep(1)

@@ -8,6 +8,7 @@ from .celery_app import celery_app
 from time import sleep
 import os
 import logging
+from enums import ImportStatus
 
 redis = Redis.from_url(settings.REDIS_URL, decode_responses=True)
 
@@ -16,7 +17,7 @@ BATCH_SIZE = 2000
 
 @celery_app.task
 def import_csv_task(file_path: str, task_id: str):
-    redis.hset(f"progress:{task_id}", "status", "Processing")
+    redis.hset(f"progress:{task_id}", "status", ImportStatus.PROCESSING.value)
     processed = 0
 
     try:
@@ -51,7 +52,7 @@ def import_csv_task(file_path: str, task_id: str):
                         percent = int((processed / total_rows) * 100)
                         redis.hset(f"progress:{task_id}", mapping={
                             "percent": percent,
-                            "status": "Processing",
+                            "status": ImportStatus.PROCESSING.value,
                             "processed": processed,
                         })
 
@@ -62,7 +63,7 @@ def import_csv_task(file_path: str, task_id: str):
 
         redis.hset(f"progress:{task_id}", mapping={
             "percent": 100,
-            "status": "Completed",
+            "status": ImportStatus.COMPLETED.value,
             "processed": processed
         })
 
@@ -70,7 +71,7 @@ def import_csv_task(file_path: str, task_id: str):
         logging.error(f"Error importing CSV: {e}")
         redis.hset(f"progress:{task_id}", mapping={
             "percent": 100,
-            "status": "Failed",
+            "status": ImportStatus.FAILED.value,
             "processed": processed,
         })
 

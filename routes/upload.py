@@ -7,6 +7,7 @@ from config import settings
 import logging
 import os 
 from fastapi import File 
+from enums import ImportStatus
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 
@@ -41,7 +42,7 @@ async def upload_csv(file: UploadFile = File(...)):
 
     redis_client.hset(f"progress:{task_id}", mapping={
         "percent": 0,
-        "status": "Queued",
+        "status": ImportStatus.QUEUED.value,
         "processed": 0
     })
 
