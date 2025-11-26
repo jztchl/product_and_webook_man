@@ -4,7 +4,7 @@ from models.product import Product
 from database import get_db
 from fastapi import Depends
 from schemas.product import ProductCreate, ProductUpdate, ProductResponse
-import uuid 
+from schemas.common import StatusUpdate
 from typing import Optional
 import logging
 from workers.tasks import deliver_webhook
@@ -69,10 +69,7 @@ def get_product(product_id: str, db: Session = Depends(get_db)):
         logging.error(f"Product not found: {product_id}")
         return {"message": "Product not found"}
 
-from pydantic import BaseModel
 
-class StatusUpdate(BaseModel):
-    status: bool
 
 @router.post("/set_status/{product_id}", response_model=ProductResponse)
 def set_product_active(product_id: str, status_update: StatusUpdate, db: Session = Depends(get_db)):

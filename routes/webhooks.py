@@ -4,6 +4,7 @@ from models.webhook import Webhook
 from database import get_db
 from fastapi import Depends
 from schemas.webhook import WebhookCreate, WebhookUpdate, WebhookResponse
+from schemas.common import StatusUpdate
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 import time
@@ -52,6 +53,18 @@ def delete_webhook(webhook_id: str, db: Session = Depends(get_db)):
     db.delete(webhook)
     db.commit()
     return {"message": "Webhook deleted"}
+
+
+@router.post("/set_status/{webhook_id}")
+def toggle_webhook(webhook_id: str,status_update: StatusUpdate, db: Session = Depends(get_db)):
+    webhook = db.query(Webhook).get(webhook_id)
+    if not webhook:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    webhook.active = status_update.status
+    db.commit()
+    db.refresh(webhook)
+    return {"status": webhook.active}
+
 
 
 @router.post("/test/{webhook_id}")

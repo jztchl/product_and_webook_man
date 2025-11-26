@@ -4,22 +4,21 @@
 <meta charset="UTF-8">
 <title>Product Manager</title>
 <style>
-    body { font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: auto; }
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 1000px; margin: auto; }
     .section { margin-bottom: 40px; }
     .progress-bar { width: 100%; background: #eee; height: 20px; border-radius: 4px; overflow: hidden; }
     .progress { height: 100%; width: 0%; background: green; transition: width 0.2s; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { padding: 8px; border-bottom: 1px solid #ddd; text-align: left; }
+    th, td { padding: 8px; border-bottom: 1px solid #ddd; text-align: left; vertical-align: middle; }
     button { padding: 6px 12px; margin: 5px; cursor: pointer; }
-    .modal {
-        display: none;
-        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-        background: rgba(0,0,0,0.6);
-        justify-content: center; align-items: center;
-    }
-    .modal-content {
-        background: #fff; padding: 20px; border-radius: 5px; width: 400px;
-    }
+    .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.6); justify-content: center; align-items: center; }
+    .modal-content { background: #fff; padding: 20px; border-radius: 5px; width: 400px; }
+    input[type="text"], input[type="number"], select { padding: 6px; margin: 4px 0; width: 100%; box-sizing: border-box; }
+    .small { font-size: 13px; color: #666; margin-left: 6px; }
+    .row { display:flex; gap:10px; align-items:center; }
+    .col { flex:1; }
+    .muted { color:#666; font-size:13px; }
 </style>
 </head>
 <body>
@@ -98,6 +97,46 @@
     <button onclick="nextPage()">Next</button>
 </div>
 
+<hr>
+
+<!-- WEBHOOKS -->
+<div class="section">
+    <h3>Webhooks</h3>
+
+    <h4>Create Webhook</h4>
+    <div class="row" style="margin-bottom:8px;">
+        <div class="col">
+            <input id="w-url" type="text" placeholder="Webhook URL (https://...)">
+        </div>
+        <div style="width:220px;">
+            <input id="w-event" type="text" placeholder="Event type (product_created)">
+            <div class="small muted">Examples: product_created, product_updated, product_deleted, product_imported</div>
+        </div>
+        <div style="width:120px;">
+            <select id="w-active">
+                <option value="true">Active</option>
+                <option value="false">Inactive</option>
+            </select>
+        </div>
+        <div style="width:120px;">
+            <button onclick="createWebhook()">Create</button>
+        </div>
+    </div>
+
+    <table id="webhook-table">
+        <thead>
+            <tr>
+                <th>URL</th>
+                <th>Event</th>
+                <th>Active</th>
+                <th>Created</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
 <!-- UPDATE MODAL -->
 <div id="update-modal" class="modal">
     <div class="modal-content">
@@ -174,6 +213,7 @@ function listenProgress(taskId) {
             evt.close();
             alert("✔ Import Completed!");
             loadProducts();
+            loadWebhooks();
         }
     };
 }
@@ -201,6 +241,7 @@ function createProduct() {
         }
         alert("✅ Product created!");
         loadProducts();
+        loadWebhooks();
     });
 }
 
@@ -244,7 +285,7 @@ function renderProducts(list) {
             <td>${p.price}</td>
             <td>${p.active}</td>
             <td>
-                <button onclick="openUpdate('${p.id}', '${p.name}', '${p.description}', '${p.price}')">Update</button>
+                <button onclick="openUpdate('${p.id}', '${escapeJs(p.name)}', '${escapeJs(p.description)}', '${p.price}')">Update</button>
                 <button onclick="toggleActive('${p.id}', ${p.active})">${p.active ? 'Deactivate' : 'Activate'}</button>
                 <button onclick="deleteProduct('${p.id}')">Delete</button>
             </td>
@@ -252,6 +293,11 @@ function renderProducts(list) {
 
         tbody.appendChild(tr);
     });
+}
+
+function escapeJs(str) {
+    if (!str && str !== "") return "";
+    return String(str).replace(/'/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "\\r");
 }
 
 function nextPage() {
@@ -267,9 +313,9 @@ function prevPage() {
 /* ------------------- UPDATE ------------------ */
 function openUpdate(id, name, desc, price) {
     updateId = id;
-    document.getElementById("u-name").value = name;
-    document.getElementById("u-desc").value = desc;
-    document.getElementById("u-price").value = price;
+    document.getElementById("u-name").value = name || "";
+    document.getElementById("u-desc").value = desc || "";
+    document.getElementById("u-price").value = price || 0;
     document.getElementById("update-modal").style.display = "flex";
 }
 
@@ -295,6 +341,7 @@ function saveUpdate() {
         alert("✅ Updated!");
         closeModal();
         loadProducts();
+        loadWebhooks();
     });
 }
 
@@ -319,6 +366,7 @@ function toggleActive(id, currentActive) {
         }
         alert(`✔ Status updated to: ${newActive ? "Active" : "Inactive"}`);
         loadProducts();
+        loadWebhooks();
     });
 }
 
@@ -333,6 +381,7 @@ function deleteProduct(id) {
             }
             alert("🗑 Deleted!");
             loadProducts();
+            loadWebhooks();
         });
 }
 
@@ -349,10 +398,150 @@ function deleteAll() {
             }
             alert("💥 All products deleted!");
             loadProducts();
+            loadWebhooks();
         });
 }
 
-loadProducts();
+/* ------------------- WEBHOOKS ------------------ */
+function loadWebhooks() {
+    fetch(BASE + "/webhooks/list")
+        .then(async r => {
+            if (!r.ok) {
+                alert("❌ Failed to load webhooks.");
+                return [];
+            }
+            return r.json();
+        })
+        .then(list => renderWebhooks(list))
+        .catch(err => {
+            console.error("loadWebhooks error", err);
+            alert("❌ Error loading webhooks");
+        });
+}
+
+function renderWebhooks(list) {
+    const tbody = document.querySelector("#webhook-table tbody");
+    tbody.innerHTML = "";
+
+    if (!Array.isArray(list)) {
+        alert("❌ Error loading webhooks.");
+        console.error("Expected array, got:", list);
+        return;
+    }
+
+    list.forEach(w => {
+        const tr = document.createElement("tr");
+        const created = w.created_at ? new Date(w.created_at).toLocaleString() : "";
+        const activeLabel = w.active ? "Deactivate" : "Activate";
+
+        tr.innerHTML = `
+            <td style="max-width:300px; word-break:break-all;">${w.url}</td>
+            <td>${w.event_type}</td>
+            <td>${w.active}</td>
+            <td>${created}</td>
+            <td>
+                <button onclick="testWebhook('${w.id}')">Test</button>
+                <button onclick="toggleWebhook('${w.id}', ${w.active})">${activeLabel}</button>
+                <button onclick="deleteWebhook('${w.id}')">Delete</button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+
+function createWebhook() {
+    const body = {
+        url: document.getElementById("w-url").value,
+        event_type: document.getElementById("w-event").value,
+        active: document.getElementById("w-active").value === "true"
+    };
+
+    fetch(BASE + "/webhooks/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+    })
+    .then(async r => {
+        if (!r.ok) {
+            const e = await r.json().catch(() => ({ detail: "Failed" }));
+            alert("❌ Failed to create webhook: " + (e.detail || e.message));
+            return;
+        }
+        alert("✅ Webhook created!");
+        document.getElementById("w-url").value = "";
+        document.getElementById("w-event").value = "";
+        loadWebhooks();
+    })
+    .catch(err => { console.error(err); alert("❌ Error creating webhook"); });
+}
+
+function deleteWebhook(id) {
+    if (!confirm("Delete webhook?")) return;
+
+    fetch(BASE + `/webhooks/delete/${id}`, { method: "DELETE" })
+        .then(async r => {
+            if (!r.ok) {
+                const e = await r.json();
+                alert("❌ Delete failed: " + (e.detail || e.message));
+                return;
+            }
+            alert("🗑 Webhook deleted");
+            loadWebhooks();
+        })
+        .catch(err => { console.error(err); alert("❌ Error deleting webhook"); });
+}
+
+function testWebhook(id) {
+    // immediate feedback to user (sync test)
+    fetch(BASE + `/webhooks/test/${id}`, { method: "POST" })
+        .then(async r => {
+            if (!r.ok) {
+                const e = await r.json().catch(() => ({ body: "No response" }));
+                alert("❌ Test failed: " + (e.body || e.detail || "unknown"));
+                return;
+            }
+            const result = await r.json();
+            alert(`Test result:\nStatus: ${result.status}\nTime: ${result.response_time_ms || 'N/A'} ms\nBody: ${String(result.body).slice(0, 500)}`);
+            loadWebhooks();
+        })
+        .catch(err => {
+            console.error("testWebhook err", err);
+            alert("❌ Test failed: " + (err.message || "Network error"));
+        });
+}
+
+async function toggleWebhook(id, currentActive) {
+    const newStatus = !currentActive;
+
+    try {
+        const res = await fetch(BASE + `/webhooks/set_status/${id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: newStatus })
+        });
+
+        if (!res.ok) {
+            const text = await res.text().catch(() => "Unknown error");
+            alert("❌ Failed to change status: " + text);
+            return;
+        }
+
+        const data = await res.json();
+        alert(`✔ Webhook ${data.status ? "activated" : "deactivated"}`);
+        loadWebhooks();
+    } catch (err) {
+        console.error("toggleWebhook err", err);
+        alert("❌ Network error changing status: " + (err.message || err));
+    }
+}
+
+
+/* ------------------- INIT ------------------ */
+window.addEventListener("load", () => {
+    loadProducts();
+    loadWebhooks();
+});
 </script>
 
 </body>
