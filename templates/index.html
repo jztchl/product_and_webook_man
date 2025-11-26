@@ -159,7 +159,7 @@
 </div>
 
 <script>
-const BASE = "http://localhost:8000";
+const BASE = window.location.href.split('/').slice(0, -1).join('/');
 let pageOffset = 0;
 const PAGE_LIMIT = 20;
 let updateId = null;
