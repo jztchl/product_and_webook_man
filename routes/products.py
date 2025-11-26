@@ -65,6 +65,19 @@ def update_product(product_id: str, product: ProductUpdate, db: Session = Depend
     except ValueError:
         return {"message": "Product not found"}
 
+
+@router.delete("/delete/delete_all")
+def delete_all_products(msg:str ,db: Session = Depends(get_db)):
+    try:
+        if msg != "delete all products":
+            return {"message": "Invalid message"}
+        db.query(Product).delete()
+        db.commit()
+        return {"message": "All products deleted"}
+    except Exception as e:
+        return {"message": str(e)}
+
+
 @router.delete("/delete/{product_id}")
 def delete_product(product_id: str, db: Session = Depends(get_db)):
     try:
@@ -74,3 +87,5 @@ def delete_product(product_id: str, db: Session = Depends(get_db)):
         return {"message": "Product deleted"}
     except ValueError:
         return {"message": "Product not found"}
+
+
