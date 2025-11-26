@@ -53,6 +53,22 @@ def get_product(product_id: str, db: Session = Depends(get_db)):
     except ValueError:
         return {"message": "Product not found"}
 
+from pydantic import BaseModel
+
+class StatusUpdate(BaseModel):
+    status: bool
+
+@router.post("/set_status/{product_id}", response_model=ProductResponse)
+def set_product_active(product_id: str, status_update: StatusUpdate, db: Session = Depends(get_db)):
+    try:
+        db_product = db.query(Product).get(uuid.UUID(product_id))
+        db_product.active = status_update.status
+        db.commit()
+        db.refresh(db_product)
+        return db_product
+    except ValueError:
+        return {"message": "Product not found"}
+
 @router.put("/update/{product_id}", response_model=ProductResponse)
 def update_product(product_id: str, product: ProductUpdate, db: Session = Depends(get_db)):
     try:

@@ -31,3 +31,4 @@ class ProductListResponse(BaseModel):
     sku: str
     name: str
     price: float
+    active:bool

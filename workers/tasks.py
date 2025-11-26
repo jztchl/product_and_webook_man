@@ -35,6 +35,7 @@ def import_csv_task(file_path: str, task_id: str):
 
                     batch.append({
                         "sku": row.get("sku", "").lower().strip(),
+                        "name": row.get("name", "").lower().strip(),
                         "description": row.get("description"),
                         "price": float(row.get("price") or 0),
                         "active": True

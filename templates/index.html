@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Product Manager</title>
+<style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: auto; }
+    .section { margin-bottom: 40px; }
+    .progress-bar { width: 100%; background: #eee; height: 20px; border-radius: 4px; overflow: hidden; }
+    .progress { height: 100%; width: 0%; background: green; transition: width 0.2s; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 8px; border-bottom: 1px solid #ddd; text-align: left; }
+    button { padding: 6px 12px; margin: 5px; cursor: pointer; }
+    .modal {
+        display: none;
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.6);
+        justify-content: center; align-items: center;
+    }
+    .modal-content {
+        background: #fff; padding: 20px; border-radius: 5px; width: 400px;
+    }
+</style>
+</head>
+<body>
+
+<h2>📦 Product Importer & Manager</h2>
+
+<!-- UPLOAD -->
+<div class="section">
+    <h3>Upload CSV</h3>
+    <input type="file" id="csv-file"><br><br>
+    <button onclick="uploadCSV()">Upload</button>
+
+    <div class="progress-bar">
+        <div id="progress" class="progress"></div>
+    </div>
+    <p id="progress-text">Waiting...</p>
+</div>
+
+<hr>
+
+<!-- CREATE PRODUCT -->
+<div class="section">
+    <h3>Create Product</h3>
+    <div style="display: flex; align-items: center;">
+        <label for="c-sku" style="width: 100px;">SKU:</label>
+        <input id="c-sku" placeholder="SKU" style="flex: 1;">
+    </div>
+    <div style="display: flex; align-items: center;">
+        <label for="c-name" style="width: 100px;">Name:</label>
+        <input id="c-name" placeholder="Name" style="flex: 1;">
+    </div>
+    <div style="display: flex; align-items: center;">
+        <label for="c-desc" style="width: 100px;">Description:</label>
+        <input id="c-desc" placeholder="Description" style="flex: 1;">
+    </div>
+    <div style="display: flex; align-items: center;">
+        <label for="c-price" style="width: 100px;">Price:</label>
+        <input id="c-price" type="number" placeholder="Price" style="flex: 1;">
+    </div>
+    <button onclick="createProduct()">Create</button>
+</div>
+
+<hr>
+
+<!-- FILTERS -->
+<div class="section">
+    <h3>Products</h3>
+
+    <input id="filter-sku" placeholder="Filter SKU">
+    <input id="filter-name" placeholder="Filter Name">
+    <input id="filter-desc" placeholder="Filter Description">
+    <select id="filter-active">
+        <option value="">Active?</option>
+        <option value="true">Active</option>
+        <option value="false">Inactive</option>
+    </select>
+    <button onclick="loadProducts()">Search</button>
+    <button onclick="deleteAll()">Delete All</button>
+
+    <table id="product-table">
+        <thead>
+            <tr>
+                <th>SKU</th>
+                <th>Name</th>
+                <th>Description</th>
+                <th>Price</th>
+                <th>Active</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <button onclick="prevPage()">Prev</button>
+    <button onclick="nextPage()">Next</button>
+</div>
+
+<!-- UPDATE MODAL -->
+<div id="update-modal" class="modal">
+    <div class="modal-content">
+        <h3>Update Product</h3>
+        <input id="u-name" placeholder="Name"><br>
+        <input id="u-desc" placeholder="Description"><br>
+        <input id="u-price" type="number" placeholder="Price"><br>
+        <button onclick="saveUpdate()">Save</button>
+        <button onclick="closeModal()">Cancel</button>
+    </div>
+</div>
+
+<script>
+const BASE = "http://localhost:8000";
+let pageOffset = 0;
+const PAGE_LIMIT = 20;
+let updateId = null;
+
+/* ------------------- UPLOAD + SSE ------------------ */
+function uploadCSV() {
+    const file = document.getElementById("csv-file").files[0];
+    if (!file) { alert("Select a file"); return; }
+
+    const fd = new FormData();
+    fd.append("file", file);
+
+    fetch(BASE + "/upload/", { method: "POST", body: fd })
+        .then(r => r.json())
+        .then(d => listenProgress(d.task_id));
+}
+
+function listenProgress(taskId) {
+    const evt = new EventSource(BASE + `/stream/progress/${taskId}`);
+
+    evt.onmessage = evtMsg => {
+        const data = JSON.parse(evtMsg.data);
+
+        document.getElementById("progress").style.width = data.percent + "%";
+        document.getElementById("progress-text").innerText =
+            `${data.status} - ${data.percent}%`;
+
+        if (data.percent >= 100) {
+            evt.close();
+            loadProducts();
+        }
+    };
+}
+
+/* ------------------- CREATE ------------------ */
+function createProduct() {
+    const body = {
+        sku: document.getElementById("c-sku").value,
+        name: document.getElementById("c-name").value,
+        description: document.getElementById("c-desc").value,
+        price: Number(document.getElementById("c-price").value),
+        active: true
+    };
+
+    fetch(BASE + "/products/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+    }).then(r => {
+        if (r.ok) {
+            alert("Product created");
+        } else {
+            r.json().then(d => alert(`Error: ${d.message}`));
+        }
+    }).then(() => loadProducts());
+}
+
+/* ------------------- LIST ------------------ */
+function loadProducts() {
+    const params = new URLSearchParams({
+        skip: pageOffset,
+        limit: PAGE_LIMIT,
+        sku: document.getElementById("filter-sku").value,
+        name: document.getElementById("filter-name").value,
+        description: document.getElementById("filter-desc").value
+    });
+
+    const activeValue = document.getElementById("filter-active").value;
+    if (activeValue === "true" || activeValue === "false") {
+        params.append("active", activeValue);
+    }
+
+    fetch(BASE + "/products/list?" + params.toString())
+        .then(r => r.json())
+        .then(p => renderProducts(p));
+}
+
+function renderProducts(list) {
+    const tbody = document.querySelector("#product-table tbody");
+    tbody.innerHTML = "";
+
+    // Check if response is an error object
+    if (!Array.isArray(list)) {
+        console.error('Expected array but received:', list);
+        return;
+    }
+
+    list.forEach(p => {
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+            <td>${p.sku}</td>
+            <td>${p.name || ""}</td>
+            <td>${p.description || ""}</td>
+            <td>${p.price}</td>
+            <td>${p.active}</td>
+            <td>
+                <button onclick="openUpdate('${p.id}', '${p.name}', '${p.description}', '${p.price}')">Update</button>
+                <button onclick="toggleActive('${p.id}', ${p.active})">${p.active ? 'Deactivate' : 'Activate'}</button>
+                <button onclick="deleteProduct('${p.id}')">Delete</button>
+            </td>
+        `;
+
+        tbody.appendChild(tr);
+    });
+}
+
+function nextPage() {
+    pageOffset += PAGE_LIMIT;
+    loadProducts();
+}
+
+function prevPage() {
+    if (pageOffset >= PAGE_LIMIT) pageOffset -= PAGE_LIMIT;
+    loadProducts();
+}
+
+/* ------------------- UPDATE ------------------ */
+function openUpdate(id, name, desc, price) {
+    updateId = id;
+    document.getElementById("u-name").value = name;
+    document.getElementById("u-desc").value = desc;
+    document.getElementById("u-price").value = price;
+    document.getElementById("update-modal").style.display = "flex";
+}
+
+function saveUpdate() {
+    const body = {
+        name: document.getElementById("u-name").value,
+        description: document.getElementById("u-desc").value,
+        price: Number(document.getElementById("u-price").value)
+    };
+
+    fetch(BASE + `/products/update/${updateId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+    })
+    .then(r => r.json())
+    .then(() => {
+        closeModal();
+        loadProducts();
+    });
+}
+
+function closeModal() {
+    document.getElementById("update-modal").style.display = "none";
+}
+
+function toggleActive(id, currentActive) {
+    const newActive = !currentActive;
+    
+    fetch(BASE + `/products/set_status/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newActive })
+    })
+    .then(r => r.json())
+    .then(() => {
+        loadProducts();
+    });
+}
+
+/* ------------------- DELETE ------------------ */
+function deleteProduct(id) {
+    fetch(BASE + `/products/delete/${id}`, { method: "DELETE" })
+        .then(() => loadProducts());
+}
+
+function deleteAll() {
+    const text = prompt("Type: delete all products");
+    if (text !== "delete all products") return;
+
+    fetch(BASE + `/products/delete/delete_all?msg=${text}`, { method: "DELETE" })
+        .then(() => loadProducts());
+}
+
+// initial load
+loadProducts();
+</script>
+
+</body>
+</html>
