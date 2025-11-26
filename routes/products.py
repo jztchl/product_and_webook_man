@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from models.product import Product
 from database import get_db
 from fastapi import Depends
-from schemas.product import ProductCreate, ProductUpdate, ProductResponse, ProductListResponse
+from schemas.product import ProductCreate, ProductUpdate, ProductResponse
 import uuid 
 from typing import Optional
 router = APIRouter(prefix="/products")
@@ -24,7 +24,7 @@ def create_product(product: ProductCreate, db: Session = Depends(get_db)):
     except Exception as e:
         return {"message": str(e)}
 
-@router.get("/list", response_model=list[ProductListResponse])
+@router.get("/list", response_model=list[ProductResponse])
 def list_products(
     skip: int = 0, 
     limit: int = 100, 

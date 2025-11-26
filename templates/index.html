@@ -31,6 +31,7 @@
     <h3>Upload CSV</h3>
     <input type="file" id="csv-file"><br><br>
     <button onclick="uploadCSV()">Upload</button>
+    <button onclick="retryUpload()" id="retry-btn" style="display:none;">Retry</button>
 
     <div class="progress-bar">
         <div id="progress" class="progress"></div>
@@ -101,9 +102,18 @@
 <div id="update-modal" class="modal">
     <div class="modal-content">
         <h3>Update Product</h3>
-        <input id="u-name" placeholder="Name"><br>
-        <input id="u-desc" placeholder="Description"><br>
-        <input id="u-price" type="number" placeholder="Price"><br>
+        <div style="display: flex; align-items: center;">
+            <label for="u-name" style="width: 100px;">Name:</label>
+            <input id="u-name" placeholder="Name" style="flex: 1;"><br>
+        </div>
+        <div style="display: flex; align-items: center;">
+            <label for="u-desc" style="width: 100px;">Description:</label>
+            <input id="u-desc" placeholder="Description" style="flex: 1;"><br>
+        </div>
+        <div style="display: flex; align-items: center;">
+            <label for="u-price" style="width: 100px;">Price:</label>
+            <input id="u-price" type="number" placeholder="Price" style="flex: 1;"><br>
+        </div>
         <button onclick="saveUpdate()">Save</button>
         <button onclick="closeModal()">Cancel</button>
     </div>
@@ -118,14 +128,36 @@ let updateId = null;
 /* ------------------- UPLOAD + SSE ------------------ */
 function uploadCSV() {
     const file = document.getElementById("csv-file").files[0];
-    if (!file) { alert("Select a file"); return; }
+    if (!file) { alert("Select a file first."); return; }
 
     const fd = new FormData();
     fd.append("file", file);
 
+    document.getElementById("progress-text").innerText = "Uploading...";
+    document.getElementById("progress").style.width = "0%";
+    document.getElementById("retry-btn").style.display = "none";
+
     fetch(BASE + "/upload/", { method: "POST", body: fd })
-        .then(r => r.json())
-        .then(d => listenProgress(d.task_id));
+        .then(async (r) => {
+            if (!r.ok) {
+                const err = await r.json().catch(() => ({ detail: "Upload failed" }));
+                throw new Error(err.detail || "Upload failed");
+            }
+            return r.json();
+        })
+        .then((d) => {
+            alert("Upload started!");
+            listenProgress(d.task_id);
+        })
+        .catch((err) => {
+            alert("❌ Upload failed: " + err.message);
+            document.getElementById("progress-text").innerText = "Upload failed.";
+            document.getElementById("retry-btn").style.display = "inline-block";
+        });
+}
+
+function retryUpload() {
+    uploadCSV();
 }
 
 function listenProgress(taskId) {
@@ -140,6 +172,7 @@ function listenProgress(taskId) {
 
         if (data.percent >= 100) {
             evt.close();
+            alert("✔ Import Completed!");
             loadProducts();
         }
     };
@@ -159,13 +192,16 @@ function createProduct() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
-    }).then(r => {
-        if (r.ok) {
-            alert("Product created");
-        } else {
-            r.json().then(d => alert(`Error: ${d.message}`));
+    })
+    .then(async (r) => {
+        if (!r.ok) {
+            const e = await r.json();
+            alert("❌ Error: " + (e.detail || e.message));
+            return;
         }
-    }).then(() => loadProducts());
+        alert("✅ Product created!");
+        loadProducts();
+    });
 }
 
 /* ------------------- LIST ------------------ */
@@ -192,9 +228,9 @@ function renderProducts(list) {
     const tbody = document.querySelector("#product-table tbody");
     tbody.innerHTML = "";
 
-    // Check if response is an error object
     if (!Array.isArray(list)) {
-        console.error('Expected array but received:', list);
+        alert("❌ Error loading products.");
+        console.error("Expected array, got:", list);
         return;
     }
 
@@ -249,8 +285,14 @@ function saveUpdate() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
     })
-    .then(r => r.json())
-    .then(() => {
+    .then(async r => {
+        if (!r.ok) {
+            const e = await r.json();
+            alert("❌ Update failed: " + (e.detail || e.message));
+            console.log(e);
+            return;
+        }
+        alert("✅ Updated!");
         closeModal();
         loadProducts();
     });
@@ -260,16 +302,22 @@ function closeModal() {
     document.getElementById("update-modal").style.display = "none";
 }
 
+/* ------------------- ACTIVE ------------------ */
 function toggleActive(id, currentActive) {
     const newActive = !currentActive;
-    
+
     fetch(BASE + `/products/set_status/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newActive })
     })
-    .then(r => r.json())
-    .then(() => {
+    .then(async r => {
+        if (!r.ok) {
+            const e = await r.json();
+            alert("❌ Failed to change status: " + (e.detail || e.message));
+            return;
+        }
+        alert(`✔ Status updated to: ${newActive ? "Active" : "Inactive"}`);
         loadProducts();
     });
 }
@@ -277,7 +325,15 @@ function toggleActive(id, currentActive) {
 /* ------------------- DELETE ------------------ */
 function deleteProduct(id) {
     fetch(BASE + `/products/delete/${id}`, { method: "DELETE" })
-        .then(() => loadProducts());
+        .then(async (r) => {
+            if (!r.ok) {
+                const e = await r.json();
+                alert("❌ Delete failed: " + (e.detail || e.message));
+                return;
+            }
+            alert("🗑 Deleted!");
+            loadProducts();
+        });
 }
 
 function deleteAll() {
@@ -285,10 +341,17 @@ function deleteAll() {
     if (text !== "delete all products") return;
 
     fetch(BASE + `/products/delete/delete_all?msg=${text}`, { method: "DELETE" })
-        .then(() => loadProducts());
+        .then(async r => {
+            if (!r.ok) {
+                const e = await r.json();
+                alert("❌ Failed to delete all: " + (e.detail || e.message));
+                return;
+            }
+            alert("💥 All products deleted!");
+            loadProducts();
+        });
 }
 
-// initial load
 loadProducts();
 </script>
 

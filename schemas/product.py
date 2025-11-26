@@ -16,7 +16,8 @@ class ProductCreate(ProductBase):
 
 
 class ProductUpdate(ProductBase):
-    pass
+    sku:Optional[str] = None
+    active:Optional[bool] = None
 
 
 class ProductResponse(ProductBase):
@@ -25,10 +26,3 @@ class ProductResponse(ProductBase):
     class Config:
         from_attributes = True
 
-
-class ProductListResponse(BaseModel):
-    id: UUID
-    sku: str
-    name: str
-    price: float
-    active:bool
