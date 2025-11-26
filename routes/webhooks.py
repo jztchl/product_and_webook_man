@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 import time
 import httpx
+import uuid 
 router = APIRouter(prefix="/webhooks")
 @router.post("/create", response_model=WebhookResponse)
 def create_webhook(webhook: WebhookCreate, db: Session = Depends(get_db)):
@@ -27,14 +28,14 @@ def list_webhooks(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)
 
 @router.get("/get/{webhook_id}", response_model=WebhookResponse)
 def get_webhook(webhook_id: str, db: Session = Depends(get_db)):
-    webhook = db.query(Webhook).get(webhook_id)
+    webhook = db.query(Webhook).get(uuid.UUID(webhook_id))
     if not webhook:
         raise HTTPException(status_code=404, detail="Webhook not found")
     return webhook
 
 @router.put("/update/{webhook_id}", response_model=WebhookResponse)
 def update_webhook(webhook_id: str, webhook_update: WebhookUpdate, db: Session = Depends(get_db)):
-    db_webhook = db.query(Webhook).get(webhook_id)
+    db_webhook = db.query(Webhook).get(uuid.UUID(webhook_id))
     if not db_webhook:
         raise HTTPException(status_code=404, detail="Webhook not found")
     update_data = webhook_update.model_dump(exclude_unset=True)
@@ -47,7 +48,7 @@ def update_webhook(webhook_id: str, webhook_update: WebhookUpdate, db: Session =
 
 @router.delete("/delete/{webhook_id}")
 def delete_webhook(webhook_id: str, db: Session = Depends(get_db)):
-    webhook = db.query(Webhook).get(webhook_id)
+    webhook = db.query(Webhook).get(uuid.UUID(webhook_id))
     if not webhook:
         raise HTTPException(status_code=404, detail="Webhook not found")
     db.delete(webhook)
@@ -57,7 +58,7 @@ def delete_webhook(webhook_id: str, db: Session = Depends(get_db)):
 
 @router.post("/set_status/{webhook_id}")
 def toggle_webhook(webhook_id: str,status_update: StatusUpdate, db: Session = Depends(get_db)):
-    webhook = db.query(Webhook).get(webhook_id)
+    webhook = db.query(Webhook).get(uuid.UUID(webhook_id))
     if not webhook:
         raise HTTPException(status_code=404, detail="Webhook not found")
     webhook.active = status_update.status
@@ -69,7 +70,7 @@ def toggle_webhook(webhook_id: str,status_update: StatusUpdate, db: Session = De
 
 @router.post("/test/{webhook_id}")
 async def test_webhook(webhook_id: str, db: Session = Depends(get_db)):
-    webhook = db.query(Webhook).filter(Webhook.id == webhook_id).first()
+    webhook = db.query(Webhook).filter(Webhook.id == uuid.UUID(webhook_id)).first()
 
     if not webhook:
         raise HTTPException(404, "Webhook not found")
